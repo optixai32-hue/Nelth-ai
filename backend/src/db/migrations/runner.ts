@@ -39,7 +39,22 @@ export async function runMigrations(): Promise<void> {
   try {
     await client.query(CREATE_VERSION_TABLE);
     // Serialize concurrent runners (api server + worker booting together).
-    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+    // NOTE: session-level advisory locks are unavailable under transaction-
+    // pooling (Supabase pooler / PgBouncer transaction mode) — the lock query
+    // can hang forever there. Use a bounded attempt (statement_timeout) and
+    // proceed WITHOUT the lock on failure: migrations are IF NOT EXISTS
+    // idempotent, so a rare double-run is safe.
+    let lockAcquired = false;
+    try {
+      await client.query("SET statement_timeout = '5s'");
+      await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+      lockAcquired = true;
+      await client.query("SET statement_timeout = 0");
+    } catch (lockErr) {
+      logger.warning("migration advisory lock unavailable (transaction pooler?) — continuing unlocked", {
+        error: String(lockErr),
+      });
+    }
     try {
       const applied = await client.query<{ id: string }>(
         "SELECT id FROM onyx_schema_versions",
@@ -68,7 +83,14 @@ export async function runMigrations(): Promise<void> {
       }
       logger.info(`applied ${pending.length} migrations`);
     } finally {
-      await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+      if (lockAcquired) {
+        try {
+          await client.query("SET statement_timeout = 0");
+          await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+        } catch (unlockErr) {
+          logger.warning("migration advisory unlock failed", { error: String(unlockErr) });
+        }
+      }
     }
   } finally {
     client.release();
