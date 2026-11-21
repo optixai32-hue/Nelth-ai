@@ -32,6 +32,15 @@ export const vercelHandler: Handler = async (req: Request) => {
     } else if (path.startsWith(API_PREFIX + "/")) {
       path = path.slice(API_PREFIX.length);
     }
+    if (path === "/") {
+      // TEMP DIAG: echo routing info to debug path recovery after rewrite
+      const hdrs: Record<string, string> = {};
+      req.headers.forEach((v, k) => { if (k.startsWith("x-vercel") || k === "referer") hdrs[k] = v; });
+      return new Response(JSON.stringify({ seen_url: url.toString(), hdrs }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (path !== url.pathname) {
       url.pathname = path;
       return await app.fetch(new Request(url.toString(), req));
