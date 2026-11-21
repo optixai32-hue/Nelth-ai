@@ -44,16 +44,25 @@ export async function runMigrations(): Promise<void> {
     // can hang forever there. Use a bounded attempt (statement_timeout) and
     // proceed WITHOUT the lock on failure: migrations are IF NOT EXISTS
     // idempotent, so a rare double-run is safe.
+    // Session-level advisory locks are UNSAFE on transaction poolers
+    // (Supavisor transaction mode): the lock outlives the transaction on the
+    // parked server session and every later runner blocks forever. When a
+    // shared/serverless deployment is detected (ONYX_DB_SCHEMA or
+    // ONYX_SERVERLESS), skip locking entirely — migrations are IF NOT EXISTS
+    // idempotent, so a rare concurrent double-run is safe.
     let lockAcquired = false;
-    try {
-      await client.query("SET statement_timeout = '5s'");
-      await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
-      lockAcquired = true;
-      await client.query("SET statement_timeout = 0");
-    } catch (lockErr) {
-      logger.warning("migration advisory lock unavailable (transaction pooler?) — continuing unlocked", {
-        error: String(lockErr),
-      });
+    const sharedDb = Boolean(process.env.ONYX_DB_SCHEMA?.trim() || process.env.ONYX_SERVERLESS);
+    if (!sharedDb) {
+      try {
+        await client.query("SET statement_timeout = '5s'");
+        await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+        lockAcquired = true;
+        await client.query("SET statement_timeout = 0");
+      } catch (lockErr) {
+        logger.warning("migration advisory lock unavailable — continuing unlocked", {
+          error: String(lockErr),
+        });
+      }
     }
     try {
       const applied = await client.query<{ id: string }>(
