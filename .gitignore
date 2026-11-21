@@ -3,12 +3,12 @@ node_modules/
 .pnp
 .pnp.js
 
-# builds
-.next/
-out/
-build/
-dist/
-.turbo/
+# builds (root-level only, do NOT ignore src dirs like src/lib/build)
+/.next/
+/out/
+/build/
+/dist/
+/.turbo/
 
 # env & secrets (never commit)
 .env
