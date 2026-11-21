@@ -24,9 +24,35 @@ const logger = getLogger("key_value_store.redis");
 
 let client: Redis | null = null;
 
+/**
+ * Minimal no-op client used when REDIS_URL is unset (e.g. Vercel serverless
+ * without a managed Redis). Every operation resolves to the "miss/empty"
+ * shape; the surrounding kv* functions are fail-open anyway. This avoids
+ * ioredis connection storms against an undefined endpoint.
+ */
+function createNoopRedis(): Redis {
+  const stub = {
+    get: async () => null,
+    set: async () => "OK",
+    del: async () => 0,
+    keys: async () => [] as string[],
+    ping: async () => "PONG",
+    quit: async () => "OK",
+    disconnect: () => {},
+    on: () => stub,
+    status: "noop",
+  } as unknown as Redis;
+  return stub;
+}
+
 /** Lazy singleton ioredis client (port of redis_pool.get_redis_client). */
 export function getRedis(): Redis {
   if (!client) {
+    if (!REDIS_URL) {
+      logger.warning("REDIS_URL not set — using no-op in-memory KV (fail-open mode)");
+      client = createNoopRedis();
+      return client;
+    }
     client = new Redis(REDIS_URL, {
       lazyConnect: false,
       maxRetriesPerRequest: 1,

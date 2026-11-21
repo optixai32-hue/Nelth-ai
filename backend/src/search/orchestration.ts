@@ -52,8 +52,22 @@ export async function searchDocuments(req: SearchRequest): Promise<SearchDoc[]> 
     logger.debug("search with persona filter (no-op in retrieval)", { personaId: req.personaId });
   }
 
-  await ensureDocumentIndex();
-  const [queryEmbedding] = await embedTexts([query]);
+  // Serverless deployments may run without OpenSearch (documented deviation):
+  // index bootstrap and embedding are best-effort, and both retrieval legs
+  // already fail-open to empty sets below — chat answers without retrieval.
+  try {
+    await ensureDocumentIndex();
+  } catch (err) {
+    logger.warning("document index unavailable — retrieval degraded to empty", {
+      error: String(err),
+    });
+  }
+  let queryEmbedding: number[] | undefined;
+  try {
+    [queryEmbedding] = await embedTexts([query]);
+  } catch (err) {
+    logger.warning("embedding unavailable — vector retrieval skipped", { error: String(err) });
+  }
 
   // Parallel keyword + semantic retrieval (search_runner.py run_queries).
   const [keywordResults, vectorResults] = await Promise.all([
@@ -61,10 +75,12 @@ export async function searchDocuments(req: SearchRequest): Promise<SearchDoc[]> 
       logger.warning("keyword retrieval failed", { error: String(err) });
       return [] as SearchDoc[];
     }),
-    vectorSearch(queryEmbedding, filters, numHits).catch((err) => {
-      logger.warning("vector retrieval failed", { error: String(err) });
-      return [] as SearchDoc[];
-    }),
+    queryEmbedding
+      ? vectorSearch(queryEmbedding, filters, numHits).catch((err) => {
+          logger.warning("vector retrieval failed", { error: String(err) });
+          return [] as SearchDoc[];
+        })
+      : Promise.resolve([] as SearchDoc[]),
   ]);
 
   // RRF fusion (keyword first like Onyx's fusion inputs; vector ranking is

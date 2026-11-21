@@ -12,6 +12,10 @@
  * cost 12, the passlib bcrypt default that fastapi_users inherits.
  */
 import { getLogger } from "../utils/logger.js";
+import bcrypt from "bcryptjs";
+
+/** Bun exposes native bcrypt; on Node (Vercel serverless) we use bcryptjs. */
+const hasBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 
 const logger = getLogger("auth.password");
 
@@ -19,7 +23,13 @@ const BCRYPT_COST = 12;
 
 /** Hash a plaintext password with bcrypt (passlib default cost 12). */
 export async function hashPassword(password: string): Promise<string> {
-  return Bun.password.hash(password, { algorithm: "bcrypt", cost: BCRYPT_COST });
+  if (hasBun) {
+    return Bun.password.hash(password, { algorithm: "bcrypt", cost: BCRYPT_COST });
+  }
+  // bcryptjs produces the $2a$ prefix; normalize to $2b$ for passlib parity
+  // ($2a$ and $2b$ verify identically everywhere).
+  const hash = await bcrypt.hash(password, BCRYPT_COST);
+  return hash.startsWith("$2a$") ? "$2b$" + hash.slice(4) : hash;
 }
 
 /**
@@ -29,7 +39,10 @@ export async function hashPassword(password: string): Promise<string> {
 export async function verifyPassword(password: string, passwordHash: string): Promise<boolean> {
   if (!passwordHash) return false;
   try {
-    return await Bun.password.verify(password, passwordHash);
+    if (hasBun) {
+      return await Bun.password.verify(password, passwordHash);
+    }
+    return await bcrypt.compare(password, passwordHash);
   } catch (err) {
     logger.warning("password verify failed (malformed hash?)", { error: String(err) });
     return false;

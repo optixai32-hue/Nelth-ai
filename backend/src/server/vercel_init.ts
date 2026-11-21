@@ -1,0 +1,33 @@
+/**
+ * One-time per-process init for the serverless runtime: DB migrations +
+ * LLM provider seeding (equivalent of the Bun entry's main() preamble).
+ * Idempotent — migrations are IF NOT EXISTS based and seeding checks the table.
+ */
+import { getLogger } from "../utils/logger.js";
+import { runMigrations } from "../db/migrations/runner.js";
+import { ensureDevPresetLlmProvider } from "../llm/setup.js";
+
+const logger = getLogger("api.vercel");
+
+let initPromise: Promise<void> | null = null;
+
+async function doInit(): Promise<void> {
+  try {
+    await runMigrations();
+    await ensureDevPresetLlmProvider();
+    logger.info("serverless init complete (migrations + llm seed)");
+  } catch (err) {
+    // Never fail the request because of init: migrations may race on cold
+    // starts or the DB may be briefly unavailable. The first DB query that
+    // actually needs the schema will surface a real error if truly broken.
+    logger.error("serverless init failed (continuing)", { error: String(err) });
+  }
+}
+
+/** Run once per process; subsequent calls await the same promise. */
+export function ensureServerlessInit(): Promise<void> {
+  if (!initPromise) {
+    initPromise = doInit();
+  }
+  return initPromise;
+}

@@ -15,7 +15,7 @@
  * against traversal (no `..`, no absolute keys, resolved path must stay inside
  * the base directory), mirroring S3 key sanitization in s3_key_utils.py.
  */
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile, readFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 import { FILE_STORE_DIR } from "../configs/constants.js";
@@ -51,7 +51,7 @@ export async function putFile(key: string, bytes: Uint8Array): Promise<void> {
   assertKeySafe(key);
   const path = join(BASE_DIR, key);
   await mkdir(dirname(path), { recursive: true });
-  await Bun.write(path, bytes);
+  await writeFile(path, bytes);
   logger.debug("putFile", { key, bytes: bytes.byteLength });
 }
 
@@ -62,11 +62,16 @@ export async function putFile(key: string, bytes: Uint8Array): Promise<void> {
 export async function getFile(key: string): Promise<Uint8Array | null> {
   assertKeySafe(key);
   const path = join(BASE_DIR, key);
-  const file = Bun.file(path);
-  if (!(await file.exists())) {
-    return null;
+  try {
+    const buf = await readFile(path);
+    return new Uint8Array(buf);
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
-  return new Uint8Array(await file.arrayBuffer());
 }
 
 /**

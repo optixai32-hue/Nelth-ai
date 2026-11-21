@@ -16,7 +16,7 @@
  */
 
 import type { LLMProvider } from "./types.js";
-import { DEFAULT_FAST_MODEL } from "../configs/constants.js";
+import { DEFAULT_FAST_MODEL, DEFAULT_LLM_PROVIDER } from "../configs/constants.js";
 import { getLogger } from "../utils/logger.js";
 import { ZaiProvider } from "./providers/zai.js";
 import { OpenaiCompatProvider } from "./providers/openai_compat.js";
@@ -42,7 +42,16 @@ export function getLLMProvider(providerId?: string, modelName?: string): LLMProv
   if (providerId === "openai-compatible") {
     return new OpenaiCompatProvider(model);
   }
-  if (providerId === undefined || providerId === "zai" || providerId === "") {
+  if (providerId === undefined || providerId === "") {
+    // Unset provider id: follow DEFAULT_LLM_PROVIDER (env ONYX_LLM_PROVIDER).
+    // On serverless deployments (Vercel) this routes to the OpenAI-compatible
+    // surface configured via ONYX_OPENAI_API_BASE/KEY; the sandbox keeps "zai".
+    if (DEFAULT_LLM_PROVIDER === "openai-compatible") {
+      return new OpenaiCompatProvider(model);
+    }
+    return getZaiSingleton(model);
+  }
+  if (providerId === "zai") {
     return getZaiSingleton(model);
   }
   logger.warning("unknown provider id; falling back to default", { providerId });

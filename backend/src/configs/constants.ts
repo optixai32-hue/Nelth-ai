@@ -11,7 +11,7 @@ export const POSTGRES_URI =
   process.env.ONYX_POSTGRES_URI?.trim() || "";
 
 // Redis (cache layer of Standard — real Redis at 127.0.0.1:6379)
-export const REDIS_URL = process.env.ONYX_REDIS_URL?.trim() || "redis://127.0.0.1:6379/1";
+export const REDIS_URL = process.env.ONYX_REDIS_URL?.trim() || "";
 export const REDIS_KEY_PREFIX = "onyx_ts:";
 
 // OpenSearch (document index of Standard — real OpenSearch at 127.0.0.1:9200)

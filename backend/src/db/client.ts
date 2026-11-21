@@ -12,11 +12,19 @@ let pool: Pool | null = null;
 
 export function getDb(): Pool {
   if (!pool) {
+    const uri = requirePostgresUri();
+    // Managed Postgres (Supabase pooler, Neon, etc.) requires TLS; the URI's
+    // sslmode=require maps to ssl:{rejectUnauthorized:false} because managed
+    // CAs are not bundled in the serverless runtime. Local 127.0.0.1 stays
+    // plain TCP.
+    const isLocal = /@(127\.0\.0\.1|localhost)?:/.test(uri) || uri.includes("@[::1]:");
+    const wantsTls = !isLocal && (uri.includes("sslmode=") || /pooler?\.?(supabase|neon|amazonaws|rds)\./.test(uri) || process.env.PGSSL === "require");
     pool = new Pool({
-      connectionString: requirePostgresUri(),
+      connectionString: uri,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
+      ...(wantsTls ? { ssl: { rejectUnauthorized: false } } : {}),
     });
     pool.on("error", (err) => {
       logger.error("pg pool error", { error: String(err) });
