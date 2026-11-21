@@ -6,6 +6,10 @@
  * by /api (INTERNAL_URL = https://<host>/api). api/index.ts maps to /api
  * and api/[...path].ts maps to /api/<sub-path>; the handler strips the
  * /api prefix and dispatches to the Hono app (routes: /auth, /settings, ...).
+ *
+ * Vercel function signature: named `fetch`/HTTP-method exports using the Web
+ * API (Request -> Response). The default export uses the legacy (req, res)
+ * signature on @vercel/node and IGNORES returned Responses — do not use it.
  */
 import { app } from "../src/server/app.js";
 import { ensureServerlessInit } from "../src/server/vercel_init.js";
@@ -19,7 +23,9 @@ const API_PREFIX = "/api";
 export const vercelHandler: Handler = async (req: Request) => {
   try {
     await ensureServerlessInit();
-    const url = new URL(req.url);
+    // req.url may be absolute or path-only depending on the runtime — pass a
+    // base so `new URL` always succeeds.
+    const url = new URL(req.url, "https://vercel-internal.local");
     let path = url.pathname;
     if (path === API_PREFIX) {
       path = "/";
@@ -32,8 +38,6 @@ export const vercelHandler: Handler = async (req: Request) => {
     }
     return await app.fetch(req);
   } catch (err: unknown) {
-    // Surface the real error over HTTP: serverless cold-start failures are
-    // otherwise opaque (FUNCTION_INVOCATION_FAILED).
     const stack = err instanceof Error ? err.stack : String(err);
     console.error("vercel handler error:", stack);
     return new Response(
@@ -43,9 +47,7 @@ export const vercelHandler: Handler = async (req: Request) => {
   }
 };
 
-export default vercelHandler;
-
-// Per-method exports for the Vercel Node builder.
+export const fetch = vercelHandler;
 export const GET = vercelHandler;
 export const POST = vercelHandler;
 export const PUT = vercelHandler;
