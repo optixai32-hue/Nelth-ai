@@ -1,0 +1,24 @@
+{
+  "name": "onyx-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native TypeScript port of the Onyx STANDARD backend (api_server + background worker). No Python, no Docker.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "worker": "bun run src/worker.ts"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^2.9.0",
+    "hono": "^4.9.0",
+    "ioredis": "^5.6.0",
+    "node-html-parser": "^7.0.1",
+    "pg": "^8.16.0",
+    "z-ai-web-dev-sdk": "^0.0.18",
+    "zod": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "bun-types": "^1.4.5"
+  }
+}

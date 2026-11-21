@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+.next/
+out/
+build/
+dist/
+.turbo/
+
+# env & secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# logs & runtime data
+*.log
+tmp/
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+*.pem
+coverage/
